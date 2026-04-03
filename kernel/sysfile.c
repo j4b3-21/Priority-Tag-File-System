@@ -503,3 +503,19 @@ sys_pipe(void)
   }
   return 0;
 }
+uint64
+sys_tag(void)
+{
+    char filename[128];
+    char tagname[32];
+
+    if(argstr(0, filename, sizeof(filename)) < 0)
+        return -1;
+    if(argstr(1, tagname, sizeof(tagname)) < 0)
+        return -1;
+
+    // temporary debug
+    printf("Tag syscall: file=%s tag=%s\n", filename, tagname);
+
+    return 0;
+}
