@@ -718,3 +718,104 @@ nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
 }
+
+
+/*
+ * ================= PTFS =================
+ */
+// add new tag to file and also check if adding is possible
+// if MAX_TAGS is reached , return -1
+int add_tag(struct inode *ip,char *tag){
+  if(ip->tag_count >=MAX_TAGS) return -1;
+
+  safestrcpy(ip->tags[ip->tag_count], tag, TAG_LEN);
+  ip->tag_count++;
+}
+
+//check is the file already have the given tag
+int has_tag(struct inode *ip, char *tag)
+{
+  for(int i=0;i<ip->tag_count;i++){
+    if(strcmp(ip->tags[i], tag) == 0)
+      return 1;
+  }
+  return 0;
+}
+
+// remove a given tag , return -1 if tag not exsist with the file
+int remove_tag(struct inode *ip, char *tag)
+{
+  for(int i=0;i<ip->tag_count;i++){
+    if(strcmp(ip->tags[i], tag) == 0){
+
+      for(int j=i;j<ip->tag_count-1;j++){
+        safestrcpy(ip->tags[j],
+                   ip->tags[j+1],
+                   TAG_LEN);
+      }
+
+      ip->tag_count--;
+      return 0;
+    }
+  }
+
+  return -1;
+}
+
+int calculate_priority(struct inode *ip)
+{
+  int tag_priority = get_tag_priority(ip);
+  int access = ip->access_count;
+  
+
+  return (tag_priority * 0.6) +
+         (access * 0.4); 
+         
+}
+
+int collect_inodes(struct inode *list[])
+{
+  int count = 0;
+
+  for(int i = 0; i < NINODE; i++){
+    if(icache.inode[i].ref > 0){
+      list[count++] = &icache.inode[i];
+    }
+  }
+
+  return count;
+}
+
+void sort_inodes(struct inode *list[], int n)
+{
+  for(int i = 0; i < n; i++){
+    for(int j = i+1; j < n; j++){
+
+      if(list[j]->priority >
+         list[i]->priority){
+
+        struct inode *temp = list[i];
+        list[i] = list[j];
+        list[j] = temp;
+      }
+
+    }
+  }
+}
+
+void ptfs_rebalance()
+{
+  struct inode *list[NINODE];
+  int count;
+
+  count = collect_inodes(list);
+
+  for(int i=0;i<count;i++){
+    list[i]->priority =
+      calculate_priority(list[i]);
+  }
+
+  sort_inodes(list, count);
+
+  migrate_files(list, count);
+}
