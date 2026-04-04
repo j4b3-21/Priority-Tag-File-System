@@ -6,6 +6,9 @@
 #include "proc.h"
 #include "defs.h"
 
+extern int global_access_counter;
+extern void ptfs_reorder_trigger(void);
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -435,6 +438,11 @@ scheduler(void)
     // to avoid a possible race between an interrupt
     // and wfi.
     intr_on();
+    // PTFS reorder trigger
+    if(global_access_counter >= 20){
+      ptfs_reorder_trigger();
+      global_access_counter = 0;
+    }
     intr_off();
 
     int found = 0;

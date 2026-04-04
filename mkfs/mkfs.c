@@ -82,6 +82,7 @@ main(int argc, char *argv[])
     exit(1);
   }
 
+  printf("sizeof dinode = %lu\n", sizeof(struct dinode));//temp
   assert((BSIZE % sizeof(struct dinode)) == 0);
   assert((BSIZE % sizeof(struct dirent)) == 0);
 

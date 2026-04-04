@@ -54,6 +54,8 @@ void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, int, uint64, uint, uint);
 void            itrunc(struct inode*);
 void            ireclaim(int);
+void ptfs_reorder_trigger(void);
+extern int global_access_counter;
 
 // kalloc.c
 void*           kalloc(void);

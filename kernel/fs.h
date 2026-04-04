@@ -27,6 +27,8 @@ struct superblock {
 #define NDIRECT 12
 #define NINDIRECT (BSIZE / sizeof(uint))
 #define MAXFILE (NDIRECT + NINDIRECT)
+#define MAX_TAG 5
+#define TAG_LENGTH 16
 
 // On-disk inode structure
 struct dinode {
@@ -35,7 +37,15 @@ struct dinode {
   short minor;          // Minor device number (T_DEVICE only)
   short nlink;          // Number of links to inode in file system
   uint size;            // Size of file (bytes)
+
+  //ptfs
+  char tag[MAX_TAG][TAG_LENGTH];
+  uint totalTags;
+  uint priority;
+  uint accessCount;
+
   uint addrs[NDIRECT+1];   // Data block addresses
+  char padding[100];
 };
 
 // Inodes per block.

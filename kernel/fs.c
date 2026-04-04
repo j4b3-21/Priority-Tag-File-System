@@ -26,6 +26,12 @@
 // only one device
 struct superblock sb; 
 
+// PTFS
+int global_access_counter = 0;
+// PTFS prototypes
+static void reorder_files(void);
+static void migrate_file(struct inode *ip);
+
 // Read the super block.
 static void
 readsb(int dev, struct superblock *sb)
@@ -209,6 +215,9 @@ ialloc(uint dev, short type)
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
       dip->type = type;
+      dip->priority = 50;
+      dip->totalTags = 0;
+      dip->accessCount = 0;
       log_write(bp);   // mark it allocated on the disk
       brelse(bp);
       return iget(dev, inum);
@@ -236,6 +245,13 @@ iupdate(struct inode *ip)
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
   dip->size = ip->size;
+
+  //ptfs
+  dip->totalTags = ip->totalTags;
+  dip->priority = ip->priority;
+  dip->accessCount = ip->accessCount;
+  memmove(dip->tag, ip->tag, sizeof(ip->tag));
+ 
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
   log_write(bp);
   brelse(bp);
@@ -309,6 +325,13 @@ ilock(struct inode *ip)
     ip->minor = dip->minor;
     ip->nlink = dip->nlink;
     ip->size = dip->size;
+
+    //ptfs
+    ip->totalTags = dip->totalTags;
+    ip->priority = dip->priority;
+    ip->accessCount = dip->accessCount;
+    memmove(ip->tag, dip->tag, sizeof(ip->tag));
+
     memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
     brelse(bp);
     ip->valid = 1;
@@ -456,7 +479,7 @@ itrunc(struct inode *ip)
     if(ip->addrs[i]){
       bfree(ip->dev, ip->addrs[i]);
       ip->addrs[i] = 0;
-    }
+     }
   }
 
   if(ip->addrs[NDIRECT]){
@@ -515,6 +538,8 @@ readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
     }
     brelse(bp);
   }
+
+  ip->accessCount++;
   return tot;
 }
 
@@ -556,6 +581,12 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
   // write the i-node back to disk even if the size didn't change
   // because the loop above might have called bmap() and added a new
   // block to ip->addrs[].
+  ip->accessCount++;
+  global_access_counter++;
+
+  if(global_access_counter >= 20){
+    global_access_counter = 0;
+  } 
   iupdate(ip);
 
   return tot;
@@ -717,4 +748,80 @@ struct inode*
 nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
+}
+
+//pfts
+
+
+static void migrate_file(struct inode *ip)
+{
+  int i;
+  uint oldblock, newblock;
+  struct buf *bp_old, *bp_new;
+
+  for(i = 0; i < NDIRECT; i++){
+    oldblock = ip->addrs[i];
+
+    if(oldblock == 0)
+      continue;
+
+    newblock = balloc(ip->dev);
+    if(newblock == 0)
+      return;
+
+    bp_old = bread(ip->dev, oldblock);
+    bp_new = bread(ip->dev, newblock);
+
+    memmove(bp_new->data, bp_old->data, BSIZE);
+
+    log_write(bp_new);
+
+    brelse(bp_old);
+    brelse(bp_new);
+
+    ip->addrs[i] = newblock;
+
+    bfree(ip->dev, oldblock);
+  }
+
+  iupdate(ip);
+}
+
+static void reorder_files()
+{
+  struct inode *list[NINODE];
+  int count = 0;
+  int i, j;
+
+  for(i = 0; i < NINODE; i++){
+    if(itable.inode[i].ref > 0 &&
+       itable.inode[i].type == T_FILE){
+      list[count++] = &itable.inode[i];
+    }
+  }
+
+  // sort by priority (simple bubble sort)
+  for(i = 0; i < count; i++){
+    for(j = i+1; j < count; j++){
+      if(list[j]->priority > list[i]->priority){
+        struct inode *tmp = list[i];
+        list[i] = list[j];
+        list[j] = tmp;
+      }
+    }
+  }
+
+  // migrate in order
+  for(i = 0; i < count; i++){
+    ilock(list[i]);
+    migrate_file(list[i]);
+    iunlock(list[i]);
+  }
+}
+
+void ptfs_reorder_trigger(void)
+{
+  begin_op();
+  reorder_files();
+  end_op();
 }
