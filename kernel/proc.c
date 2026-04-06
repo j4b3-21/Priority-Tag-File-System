@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "ptfs.h"
 
 struct cpu cpus[NCPU];
 
@@ -301,6 +302,8 @@ kfork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   release(&np->lock);
+
+  ptfs_reorder_trigger();
 
   return pid;
 }
@@ -688,3 +691,4 @@ procdump(void)
     printf("\n");
   }
 }
+// hello
