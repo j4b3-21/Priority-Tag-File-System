@@ -27,6 +27,10 @@ struct inode {
   short nlink;
   uint size;
   uint addrs[NDIRECT+1];
+  char tag[MAX_TAG][TAG_LENGTH];
+  uint totalTags;
+  uint priority;
+  uint accessCount;
 };
 
 // map major device number to device functions.

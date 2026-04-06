@@ -20,6 +20,7 @@
 #include "fs.h"
 #include "buf.h"
 #include "file.h"
+#include "ptfs.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 // there should be one superblock per disk device, but we run with
@@ -237,6 +238,10 @@ iupdate(struct inode *ip)
   dip->nlink = ip->nlink;
   dip->size = ip->size;
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
+  memmove(dip->tag, ip->tag, sizeof(ip->tag));
+  dip->totalTags = ip->totalTags;
+  dip->priority = ip->priority;
+  dip->accessCount = ip->accessCount;
   log_write(bp);
   brelse(bp);
 }
@@ -310,6 +315,12 @@ ilock(struct inode *ip)
     ip->nlink = dip->nlink;
     ip->size = dip->size;
     memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
+    memmove(ip->tag, dip->tag, sizeof(ip->tag));
+    ip->totalTags = dip->totalTags;
+    if(ip->totalTags > MAX_TAG)
+      ip->totalTags = MAX_TAG;
+    ip->priority = dip->priority;
+    ip->accessCount = dip->accessCount;
     brelse(bp);
     ip->valid = 1;
     if(ip->type == 0)
@@ -552,6 +563,11 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
 
   if(off > ip->size)
     ip->size = off;
+
+  if(ip->type == T_FILE){
+    ip->accessCount++;
+    calculate_priority(ip);
+  }
 
   // write the i-node back to disk even if the size didn't change
   // because the loop above might have called bmap() and added a new

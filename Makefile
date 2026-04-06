@@ -21,6 +21,7 @@ OBJS = \
   $K/bio.o \
   $K/fs.o \
   $K/log.o \
+  $K/ptfs.o \
   $K/sleeplock.o \
   $K/file.o \
   $K/pipe.o \
@@ -146,9 +147,12 @@ UPROGS=\
 	$U/_logstress\
 	$U/_forphan\
 	$U/_dorphan\
+	$U/_addtag\
+	$U/_removetag\
+	$U/_listtags
 
-fs.img: mkfs/mkfs README $(UPROGS)
-	mkfs/mkfs fs.img README $(UPROGS)
+fs.img: mkfs/mkfs README .config_tag $(UPROGS)
+	mkfs/mkfs fs.img README .config_tag $(UPROGS)
 
 -include kernel/*.d user/*.d
 
