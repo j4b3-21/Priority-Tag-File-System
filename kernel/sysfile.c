@@ -15,6 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "ptfs.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -71,12 +72,23 @@ sys_read(void)
   struct file *f;
   int n;
   uint64 p;
+  int ret;
 
   argaddr(1, &p);
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
-  return fileread(f, p, n);
+  ret = fileread(f, p, n);
+  if(ret > 0 && f->type == FD_INODE){
+    begin_op();
+    ilock(f->ip);
+    if(f->ip->type == T_FILE){
+      f->ip->accessCount++;
+      calculate_priority(f->ip);
+      iupdate(f->ip);
+    }
+  }
+  return ret;
 }
 
 uint64
