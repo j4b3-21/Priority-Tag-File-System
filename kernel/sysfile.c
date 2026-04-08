@@ -589,3 +589,28 @@ sys_removetag(void)
     ptfs_reorder_trigger();
   return rc;
 }
+
+uint64
+sys_listtags(void)
+{
+  char path[MAXPATH];
+  char outbuf[MAX_TAG * TAG_LENGTH + MAX_TAG + 1];
+  uint64 userbuf;
+  int maxlen;
+  int outlen = 0;
+  struct proc *p = myproc();
+  struct inode *ip;
+  if(argstr(0, path, MAXPATH) < 0)
+    return -1;
+  argaddr(1, &userbuf);
+  argint(2, &maxlen);
+  if(maxlen <= 0)
+    return -1;
+  begin_op();
+  ip = namei(path);
+  if(ip == 0){
+    end_op();
+    return -1;
+  }
+  return 0;
+}
