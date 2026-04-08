@@ -67,3 +67,73 @@ void parse_tag_config(void) {
     end_op();
     return;
   }
+  ilock(ip);
+  n = ip->size;
+  if (n > BSIZE - 1)
+    n = BSIZE - 1;
+  if (n > 0)
+    n = readi(ip, 0, (uint64)buf, 0, n);
+  else
+    n = 0;
+  if (n < 0)
+    n = 0;
+  buf[n] = 0;
+  iunlockput(ip);
+  end_op();
+
+  i = 0;
+  while (i < n) {
+    char tag[TAG_LENGTH];
+    int tlen = 0;
+    int value = 0;
+    int have_digits = 0;
+    int sign = 1;
+
+    while (i < n && (buf[i] == ' ' || buf[i] == '\t' || buf[i] == '\r' ||
+                     buf[i] == '\n'))
+      i++;
+    if (i >= n)
+      break;
+
+    memset(tag, 0, sizeof(tag));
+    while (i < n && buf[i] != ':' && buf[i] != '\n' && buf[i] != '\r') {
+      if (tlen < TAG_LENGTH - 1)
+        tag[tlen++] = buf[i];
+      i++;
+    }
+
+    if (i >= n || buf[i] != ':') {
+      while (i < n && buf[i] != '\n')
+        i++;
+      continue;
+    }
+    i++;
+
+    if (i < n && buf[i] == '-') {
+      sign = -1;
+      i++;
+    }
+    while (i < n && buf[i] >= '0' && buf[i] <= '9') {
+      have_digits = 1;
+      value = value * 10 + (buf[i] - '0');
+      i++;
+    }
+
+    while (i < n && buf[i] != '\n')
+      i++;
+    if (i < n && buf[i] == '\n')
+      i++;
+
+    if (tlen == 0 || !have_digits)
+      continue;
+
+    acquire(&ptfs_lock);
+    if (tag_table_count < MAX_TAG_TABLE) {
+      memset(tag_table[tag_table_count].tag, 0, TAG_LENGTH);
+      strncpy(tag_table[tag_table_count].tag, tag, TAG_LENGTH - 1);
+      tag_table[tag_table_count].priority = value * sign;
+      tag_table_count++;
+    }
+    release(&ptfs_lock);
+  }
+}
