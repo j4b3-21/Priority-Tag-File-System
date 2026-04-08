@@ -137,3 +137,19 @@ void parse_tag_config(void) {
     release(&ptfs_lock);
   }
 }
+
+void calculate_priority(struct inode *ip) {
+  int i;
+  int sum = 0;
+
+  if (ip == 0)
+    return;
+
+  if (ip->totalTags > MAX_TAG)
+    ip->totalTags = MAX_TAG;
+
+  for (i = 0; i < ip->totalTags; i++)
+    sum += get_tag_priority(ip->tag[i]);
+
+  ip->priority = sum + ip->accessCount;
+}
