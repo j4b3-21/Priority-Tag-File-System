@@ -387,8 +387,16 @@ sys_open(void)
     itrunc(ip);
   }
 
+  if(ip->type == T_FILE){
+    ip->accessCount++;
+    calculate_priority(ip);
+    iupdate(ip);
+  }
+
   iunlock(ip);
   end_op();
+
+  ptfs_reorder_trigger();
 
   return fd;
 }
@@ -489,6 +497,9 @@ sys_exec(void)
   for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
     kfree(argv[i]);
 
+  if(ret >= 0)
+    ptfs_reorder_trigger();
+  
   return ret;
 
  bad:
@@ -526,19 +537,31 @@ sys_pipe(void)
   }
   return 0;
 }
+
 uint64
-sys_tag(void)
+sys_addtag(void)
 {
-    char filename[128];
-    char tagname[32];
+  char path[MAXPATH];
+  char tag[TAG_LENGTH];
+  struct inode *ip;
+  int rc;
 
-    if(argstr(0, filename, sizeof(filename)) < 0)
-        return -1;
-    if(argstr(1, tagname, sizeof(tagname)) < 0)
-        return -1;
+  if(argstr(0, path, MAXPATH) < 0 || argstr(1, tag, TAG_LENGTH) < 0)
+    return -1;
 
-    // temporary debug
-    printf("Tag syscall: file=%s tag=%s\n", filename, tagname);
+  begin_op();
+  ip = namei(path);
+  if(ip == 0){
+    end_op();
+    return -1;
+  }
 
-    return 0;
+  ilock(ip);
+  rc = add_tag(ip, tag);
+  iunlockput(ip);
+  end_op();
+
+  if(rc == 0)
+    ptfs_reorder_trigger();
+  return rc;
 }
