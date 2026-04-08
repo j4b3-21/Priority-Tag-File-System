@@ -612,5 +612,25 @@ sys_listtags(void)
     end_op();
     return -1;
   }
+
+  ilock(ip);
+  memset(outbuf, 0, sizeof(outbuf));
+  for(int i = 0; i < ip->totalTags; i++){
+    for(int j = 0; j < TAG_LENGTH && ip->tag[i][j] != 0; j++){
+      if(outlen + 1 >= (int)sizeof(outbuf))
+        break;
+      outbuf[outlen++] = ip->tag[i][j];
+    }
+    if(i + 1 < ip->totalTags && outlen + 1 < (int)sizeof(outbuf))
+      outbuf[outlen++] = ',';
+  }
+  if(outlen < (int)sizeof(outbuf))
+    outbuf[outlen] = 0;
+  iunlockput(ip);
+  end_op();
+  if(maxlen > outlen + 1)
+    maxlen = outlen + 1;
+  if(copyout(p->pagetable, userbuf, outbuf, maxlen) < 0)
+    return -1;
   return 0;
 }
