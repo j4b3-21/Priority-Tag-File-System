@@ -565,3 +565,27 @@ sys_addtag(void)
     ptfs_reorder_trigger();
   return rc;
 }
+
+uint64
+sys_removetag(void)
+{
+  char path[MAXPATH];
+  char tag[TAG_LENGTH];
+  struct inode *ip;
+  int rc;
+  if(argstr(0, path, MAXPATH) < 0 || argstr(1, tag, TAG_LENGTH) < 0)
+    return -1;
+  begin_op();
+  ip = namei(path);
+  if(ip == 0){
+    end_op();
+    return -1;
+  }
+  ilock(ip);
+  rc = remove_tag(ip, tag);
+  iunlockput(ip);
+  end_op();
+  if(rc == 0)
+    ptfs_reorder_trigger();
+  return rc;
+}
