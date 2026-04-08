@@ -153,3 +153,20 @@ void calculate_priority(struct inode *ip) {
 
   ip->priority = sum + ip->accessCount;
 }
+
+void reorder_files(void) {
+  struct inode *sorted[NINODE];
+  uint priorities[NINODE];
+  int n = 0;
+
+  acquire(&itable.lock);
+  for (int i = 0; i < NINODE; i++) {
+    struct inode *ip = &itable.inode[i];
+    if (ip->ref > 0 && ip->valid && ip->type == T_FILE) {
+      sorted[n] = ip;
+      priorities[n] = ip->priority;
+      n++;
+    }
+  }
+  release(&itable.lock);
+}
