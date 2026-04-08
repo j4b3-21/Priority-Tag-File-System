@@ -87,6 +87,9 @@ sys_read(void)
       calculate_priority(f->ip);
       iupdate(f->ip);
     }
+    iunlock(f->ip);
+    end_op();
+    ptfs_reorder_trigger();
   }
   return ret;
 }
@@ -103,7 +106,10 @@ sys_write(void)
   if(argfd(0, 0, &f) < 0)
     return -1;
 
-  return filewrite(f, p, n);
+  int ret = filewrite(f, p, n);
+  if(ret >= 0)
+    ptfs_reorder_trigger();
+  return ret;
 }
 
 uint64
@@ -283,6 +289,11 @@ create(char *path, short type, short major, short minor)
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
+  ip->totalTags = 0;
+  ip->priority = 0;
+  ip->accessCount = 0;
+  memset(ip->tag, 0, sizeof(ip->tag));
+  calculate_priority(ip);
   iupdate(ip);
 
   if(type == T_DIR){  // Create . and .. entries.
