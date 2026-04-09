@@ -78,6 +78,7 @@ sys_read(void)
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
+
   ret = fileread(f, p, n);
   if(ret > 0 && f->type == FD_INODE){
     begin_op();
@@ -105,7 +106,6 @@ sys_write(void)
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
-
   int ret = filewrite(f, p, n);
   if(ret >= 0)
     ptfs_reorder_trigger();
@@ -290,7 +290,7 @@ create(char *path, short type, short major, short minor)
   ip->minor = minor;
   ip->nlink = 1;
   ip->totalTags = 0;
-  ip->priority = 0;
+  ip->priority = PTFS_BASE_PRIORITY;
   ip->accessCount = 0;
   memset(ip->tag, 0, sizeof(ip->tag));
   calculate_priority(ip);
@@ -499,7 +499,7 @@ sys_exec(void)
 
   if(ret >= 0)
     ptfs_reorder_trigger();
-  
+
   return ret;
 
  bad:
@@ -573,18 +573,22 @@ sys_removetag(void)
   char tag[TAG_LENGTH];
   struct inode *ip;
   int rc;
+
   if(argstr(0, path, MAXPATH) < 0 || argstr(1, tag, TAG_LENGTH) < 0)
     return -1;
+
   begin_op();
   ip = namei(path);
   if(ip == 0){
     end_op();
     return -1;
   }
+
   ilock(ip);
   rc = remove_tag(ip, tag);
   iunlockput(ip);
   end_op();
+
   if(rc == 0)
     ptfs_reorder_trigger();
   return rc;
@@ -600,12 +604,14 @@ sys_listtags(void)
   int outlen = 0;
   struct proc *p = myproc();
   struct inode *ip;
+
   if(argstr(0, path, MAXPATH) < 0)
     return -1;
   argaddr(1, &userbuf);
   argint(2, &maxlen);
   if(maxlen <= 0)
     return -1;
+
   begin_op();
   ip = namei(path);
   if(ip == 0){
@@ -628,9 +634,17 @@ sys_listtags(void)
     outbuf[outlen] = 0;
   iunlockput(ip);
   end_op();
+
   if(maxlen > outlen + 1)
     maxlen = outlen + 1;
   if(copyout(p->pagetable, userbuf, outbuf, maxlen) < 0)
     return -1;
+  return 0;
+}
+
+uint64
+sys_dumpblocks(void)
+{
+  fs_dump_ptfs_blocks();
   return 0;
 }
