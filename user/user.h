@@ -29,6 +29,7 @@ int addtag(const char*, const char*);
 int removetag(const char*, const char*);
 int listtags(const char*, char*, int);
 int dumpblocks(void);
+// Tag-related system calls
 
 
 // ulib.c
