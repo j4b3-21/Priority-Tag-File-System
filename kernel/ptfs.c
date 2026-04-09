@@ -10,6 +10,11 @@
 #include "defs.h"
 #include "ptfs.h"
 
+extern struct {
+  struct spinlock lock;
+  struct inode inode[NINODE];
+} itable;
+
 struct tag_priority tag_table[MAX_TAG_TABLE];
 static int tag_table_count;
 
