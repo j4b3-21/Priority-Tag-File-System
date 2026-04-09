@@ -1,4 +1,3 @@
-// clang-format off
 #include "types.h"
 #include "riscv.h"
 #include "param.h"
@@ -10,7 +9,6 @@
 #include "defs.h"
 #include "ptfs.h"
 
-// clang-format on
 extern struct {
   struct spinlock lock;
   struct inode inode[NINODE];
