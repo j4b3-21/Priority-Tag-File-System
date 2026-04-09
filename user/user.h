@@ -26,6 +26,7 @@ char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
 int addtag(const char*, const char*);
+int removetag(const char*, const char*);
 
 
 // ulib.c
