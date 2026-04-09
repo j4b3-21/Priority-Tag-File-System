@@ -44,4 +44,5 @@ entry("pause");
 entry("uptime");
 entry("addtag");
 entry("removetag");
+entry("listtags");
 
