@@ -2,6 +2,7 @@
 #include "kernel/types.h"
 #include "user/user.h"
 
+#define MAX_TAG_BUF 128
 
 
 
