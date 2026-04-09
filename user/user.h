@@ -27,6 +27,7 @@ int pause(int);
 int uptime(void);
 int addtag(const char*, const char*);
 int removetag(const char*, const char*);
+int listtags(const char*, char*, int);
 
 
 // ulib.c
