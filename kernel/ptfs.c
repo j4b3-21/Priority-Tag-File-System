@@ -230,3 +230,133 @@ swap_single_block_files(struct inode *a, struct inode *b)
   iunlock(first);
   end_op();
 }
+
+static void
+collect_file_inodes(struct inode *dp, struct inode **out, int *n, int max)
+{
+  struct dirent de;
+
+  if(dp == 0 || dp->type != T_DIR)
+    return;
+
+  for(uint off = 0; off < dp->size; off += sizeof(de)){
+    char name[DIRSIZ + 1];
+    struct inode *child;
+
+    if(*n >= max)
+      return;
+
+    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("collect_file_inodes");
+    if(de.inum == 0)
+      continue;
+
+    memset(name, 0, sizeof(name));
+    memmove(name, de.name, DIRSIZ);
+    if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
+      continue;
+
+    child = dirlookup(dp, name, 0);
+    if(child == 0)
+      continue;
+
+    ilock(child);
+    if(child->type == T_DIR){
+      collect_file_inodes(child, out, n, max);
+      iunlock(child);
+      iput(child);
+    } else if(child->type == T_FILE) {
+      out[*n] = child;
+      (*n)++;
+      iunlock(child);
+    } else {
+      iunlock(child);
+      iput(child);
+    }
+  }
+}
+
+void
+reorder_files(void)
+{
+  struct inode *sorted[NINODE];
+  struct inode *root;
+  uint priorities[NINODE];
+  struct inode *movable[NINODE];
+  uint target_blocks[NINODE];
+  int n = 0;
+  int m = 0;
+
+  begin_op();
+  root = namei("/");
+  if(root == 0){
+    end_op();
+    return;
+  }
+  ilock(root);
+  if(root->type == T_DIR)
+    collect_file_inodes(root, sorted, &n, NINODE);
+  iunlockput(root);
+  end_op();
+
+  if(n < 2){
+    for(int i = 0; i < n; i++)
+      iput(sorted[i]);
+    return;
+  }
+
+  for(int i = 0; i < n; i++)
+    priorities[i] = sorted[i]->priority;
+
+  for(int i = 0; i < n; i++){
+    for(int j = i + 1; j < n; j++){
+      if(priorities[j] > priorities[i]){
+        uint p = priorities[i];
+        struct inode *tmp = sorted[i];
+        priorities[i] = priorities[j];
+        sorted[i] = sorted[j];
+        priorities[j] = p;
+        sorted[j] = tmp;
+      }
+    }
+  }
+
+  for(int i = 0; i < n; i++){
+    if(is_single_block_file(sorted[i]))
+      movable[m++] = sorted[i];
+  }
+
+  if(m < 2){
+    for(int i = 0; i < n; i++)
+      iput(sorted[i]);
+    return;
+  }
+
+  // Capture the available first-block slots in ascending order.
+  for(int i = 0; i < m; i++)
+    target_blocks[i] = movable[i]->addrs[0];
+  for(int i = 0; i < m; i++){
+    for(int j = i + 1; j < m; j++){
+      if(target_blocks[j] < target_blocks[i]){
+        uint t = target_blocks[i];
+        target_blocks[i] = target_blocks[j];
+        target_blocks[j] = t;
+      }
+    }
+  }
+
+  // Highest-priority file should occupy the lowest-numbered block.
+  for(int i = 0; i < m; i++){
+    if(movable[i]->addrs[0] == target_blocks[i])
+      continue;
+    for(int j = i + 1; j < m; j++){
+      if(movable[j]->addrs[0] == target_blocks[i]){
+        swap_single_block_files(movable[i], movable[j]);
+        break;
+      }
+    }
+  }
+
+  for(int i = 0; i < n; i++)
+    iput(sorted[i]);
+}
