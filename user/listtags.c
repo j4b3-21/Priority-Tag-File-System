@@ -12,5 +12,5 @@ if(argc != 2){
     fprintf(2, "usage: listtags <path>\n");
     exit(1);
   }
-
+memset(buf, 0, sizeof(buf));
 // Buffer-based approach for storing tag output
