@@ -45,4 +45,5 @@ entry("uptime");
 entry("addtag");
 entry("removetag");
 entry("listtags");
+entry("dumpblocks");
 
