@@ -360,3 +360,67 @@ reorder_files(void)
   for(int i = 0; i < n; i++)
     iput(sorted[i]);
 }
+
+void
+ptfs_reorder_trigger(void)
+{
+  parse_tag_config();
+  reorder_files();
+}
+
+int
+add_tag(struct inode *ip, char *tag)
+{
+  int i;
+
+  if(ip == 0 || tag == 0)
+    return -1;
+  if(!holdingsleep(&ip->lock))
+    return -1;
+  if(ip->type != T_FILE)
+    return -1;
+
+  for(i = 0; i < ip->totalTags; i++){
+    if(strncmp(ip->tag[i], tag, TAG_LENGTH) == 0)
+      return 0;
+  }
+
+  if(ip->totalTags >= MAX_TAG)
+    return -1;
+
+  memset(ip->tag[ip->totalTags], 0, TAG_LENGTH);
+  strncpy(ip->tag[ip->totalTags], tag, TAG_LENGTH - 1);
+  ip->totalTags++;
+  calculate_priority(ip);
+  iupdate(ip);
+  return 0;
+}
+
+int
+remove_tag(struct inode *ip, char *tag)
+{
+  int i;
+
+  if(ip == 0 || tag == 0)
+    return -1;
+  if(!holdingsleep(&ip->lock))
+    return -1;
+  if(ip->type != T_FILE)
+    return -1;
+
+  for(i = 0; i < ip->totalTags; i++){
+    if(strncmp(ip->tag[i], tag, TAG_LENGTH) == 0){
+      for(int j = i; j + 1 < ip->totalTags; j++)
+        memmove(ip->tag[j], ip->tag[j + 1], TAG_LENGTH);
+      memset(ip->tag[ip->totalTags - 1], 0, TAG_LENGTH);
+      ip->totalTags--;
+      calculate_priority(ip);
+      iupdate(ip);
+      return 0;
+    }
+  }
+
+  return -1;
+}
+
+
