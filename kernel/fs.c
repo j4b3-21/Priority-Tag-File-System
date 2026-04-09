@@ -182,6 +182,56 @@ void iinit() {
 
 static struct inode *iget(uint dev, uint inum);
 
+static void
+ptfs_format_tags(struct inode *ip, char *out, int outlen)
+{
+  int outpos = 0;
+  if(outlen <= 0)
+    return;
+  out[0] = 0;
+  for(int i = 0; i < ip->totalTags && i < MAX_TAG; i++){
+    int taglen = 0;
+    while(taglen < TAG_LENGTH && ip->tag[i][taglen] != 0)
+      taglen++;
+    if(taglen == 0)
+      continue;
+    if(outpos > 0 && outpos + 1 < outlen)
+      out[outpos++] = ',';
+    if(outpos + taglen >= outlen)
+      taglen = outlen - outpos - 1;
+    if(taglen <= 0)
+      break;
+    memmove(out + outpos, ip->tag[i], taglen);
+    outpos += taglen;
+  }
+  out[outpos] = 0;
+}
+
+static void
+ptfs_dump_file_blocks(struct inode *ip, const char *path)
+{
+  char tags[MAX_TAG * TAG_LENGTH + MAX_TAG];
+  ptfs_format_tags(ip, tags, sizeof(tags));
+  for(int i = 0; i < NDIRECT; i++){
+    if(ip->addrs[i] == 0)
+      continue;
+    printf("ptfs: block=%d file_block=%d file=%s priority=%d tags=[%s]\n",
+           ip->addrs[i], i, path, ip->priority, tags);
+  }
+  if(ip->addrs[NDIRECT]){
+    struct buf *bp = bread(ip->dev, ip->addrs[NDIRECT]);
+    uint *a = (uint*)bp->data;
+    for(int i = 0; i < NINDIRECT; i++){
+      if(a[i] == 0)
+        continue;
+      printf("ptfs: block=%d file_block=%d file=%s priority=%d tags=[%s]\n",
+             a[i], NDIRECT + i, path, ip->priority, tags);
+    }
+    brelse(bp);
+  }
+}
+
+
 // Allocate an inode on device dev.
 // Mark it as allocated by  giving it type type.
 // Returns an unlocked but allocated and referenced inode,
