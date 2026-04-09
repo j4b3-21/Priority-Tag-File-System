@@ -25,6 +25,12 @@ int getpid(void);
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
+int addtag(const char*, const char*);
+int removetag(const char*, const char*);
+int listtags(const char*, char*, int);
+int dumpblocks(void);
+// Tag-related system calls
+
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -48,3 +54,4 @@ void printf(const char*, ...) __attribute__ ((format (printf, 1, 2)));
 // umalloc.c
 void* malloc(uint);
 void free(void*);
+// Planned listtags system call for retrieving file tags

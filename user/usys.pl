@@ -20,7 +20,7 @@ sub entry {
     print " ecall\n";
     print " ret\n";
 }
-entry("tag");
+
 entry("fork");
 entry("exit");
 entry("wait");
@@ -42,3 +42,10 @@ entry("getpid");
 entry("sbrk");
 entry("pause");
 entry("uptime");
+# Tag-related syscalls
+
+entry("addtag");
+entry("removetag");
+entry("listtags");
+entry("dumpblocks");
+

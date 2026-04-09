@@ -1,8 +1,6 @@
 K=kernel
 U=user
 
-
-
 OBJS = \
   $K/entry.o \
   $K/start.o \
@@ -23,6 +21,7 @@ OBJS = \
   $K/bio.o \
   $K/fs.o \
   $K/log.o \
+  $K/ptfs.o \
   $K/sleeplock.o \
   $K/file.o \
   $K/pipe.o \
@@ -128,7 +127,6 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 .PRECIOUS: %.o
 
 UPROGS=\
-	$U/_tag\
 	$U/_cat\
 	$U/_echo\
 	$U/_clear\
@@ -150,9 +148,12 @@ UPROGS=\
 	$U/_forphan\
 	$U/_dorphan\
 	$U/_addtag\
+	$U/_removetag\
+	$U/_listtags\
+	$U/_dumpblocks
 
-fs.img: mkfs/mkfs README $(UPROGS)
-	mkfs/mkfs fs.img README $(UPROGS)
+fs.img: mkfs/mkfs README .config_tag $(UPROGS)
+	mkfs/mkfs fs.img README .config_tag $(UPROGS)
 
 -include kernel/*.d user/*.d
 
