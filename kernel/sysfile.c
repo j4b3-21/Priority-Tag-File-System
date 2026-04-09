@@ -15,6 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "ptfs.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -71,12 +72,26 @@ sys_read(void)
   struct file *f;
   int n;
   uint64 p;
+  int ret;
 
   argaddr(1, &p);
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
-  return fileread(f, p, n);
+  ret = fileread(f, p, n);
+  if(ret > 0 && f->type == FD_INODE){
+    begin_op();
+    ilock(f->ip);
+    if(f->ip->type == T_FILE){
+      f->ip->accessCount++;
+      calculate_priority(f->ip);
+      iupdate(f->ip);
+    }
+    iunlock(f->ip);
+    end_op();
+    ptfs_reorder_trigger();
+  }
+  return ret;
 }
 
 uint64
@@ -91,7 +106,10 @@ sys_write(void)
   if(argfd(0, 0, &f) < 0)
     return -1;
 
-  return filewrite(f, p, n);
+  int ret = filewrite(f, p, n);
+  if(ret >= 0)
+    ptfs_reorder_trigger();
+  return ret;
 }
 
 uint64
@@ -271,6 +289,11 @@ create(char *path, short type, short major, short minor)
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
+  ip->totalTags = 0;
+  ip->priority = 0;
+  ip->accessCount = 0;
+  memset(ip->tag, 0, sizeof(ip->tag));
+  calculate_priority(ip);
   iupdate(ip);
 
   if(type == T_DIR){  // Create . and .. entries.
@@ -364,8 +387,16 @@ sys_open(void)
     itrunc(ip);
   }
 
+  if(ip->type == T_FILE){
+    ip->accessCount++;
+    calculate_priority(ip);
+    iupdate(ip);
+  }
+
   iunlock(ip);
   end_op();
+
+  ptfs_reorder_trigger();
 
   return fd;
 }
@@ -466,6 +497,9 @@ sys_exec(void)
   for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
     kfree(argv[i]);
 
+  if(ret >= 0)
+    ptfs_reorder_trigger();
+  
   return ret;
 
  bad:
@@ -503,19 +537,100 @@ sys_pipe(void)
   }
   return 0;
 }
+
 uint64
-sys_tag(void)
+sys_addtag(void)
 {
-    char filename[128];
-    char tagname[32];
+  char path[MAXPATH];
+  char tag[TAG_LENGTH];
+  struct inode *ip;
+  int rc;
 
-    if(argstr(0, filename, sizeof(filename)) < 0)
-        return -1;
-    if(argstr(1, tagname, sizeof(tagname)) < 0)
-        return -1;
+  if(argstr(0, path, MAXPATH) < 0 || argstr(1, tag, TAG_LENGTH) < 0)
+    return -1;
 
-    // temporary debug
-    printf("Tag syscall: file=%s tag=%s\n", filename, tagname);
+  begin_op();
+  ip = namei(path);
+  if(ip == 0){
+    end_op();
+    return -1;
+  }
 
-    return 0;
+  ilock(ip);
+  rc = add_tag(ip, tag);
+  iunlockput(ip);
+  end_op();
+
+  if(rc == 0)
+    ptfs_reorder_trigger();
+  return rc;
+}
+
+uint64
+sys_removetag(void)
+{
+  char path[MAXPATH];
+  char tag[TAG_LENGTH];
+  struct inode *ip;
+  int rc;
+  if(argstr(0, path, MAXPATH) < 0 || argstr(1, tag, TAG_LENGTH) < 0)
+    return -1;
+  begin_op();
+  ip = namei(path);
+  if(ip == 0){
+    end_op();
+    return -1;
+  }
+  ilock(ip);
+  rc = remove_tag(ip, tag);
+  iunlockput(ip);
+  end_op();
+  if(rc == 0)
+    ptfs_reorder_trigger();
+  return rc;
+}
+
+uint64
+sys_listtags(void)
+{
+  char path[MAXPATH];
+  char outbuf[MAX_TAG * TAG_LENGTH + MAX_TAG + 1];
+  uint64 userbuf;
+  int maxlen;
+  int outlen = 0;
+  struct proc *p = myproc();
+  struct inode *ip;
+  if(argstr(0, path, MAXPATH) < 0)
+    return -1;
+  argaddr(1, &userbuf);
+  argint(2, &maxlen);
+  if(maxlen <= 0)
+    return -1;
+  begin_op();
+  ip = namei(path);
+  if(ip == 0){
+    end_op();
+    return -1;
+  }
+
+  ilock(ip);
+  memset(outbuf, 0, sizeof(outbuf));
+  for(int i = 0; i < ip->totalTags; i++){
+    for(int j = 0; j < TAG_LENGTH && ip->tag[i][j] != 0; j++){
+      if(outlen + 1 >= (int)sizeof(outbuf))
+        break;
+      outbuf[outlen++] = ip->tag[i][j];
+    }
+    if(i + 1 < ip->totalTags && outlen + 1 < (int)sizeof(outbuf))
+      outbuf[outlen++] = ',';
+  }
+  if(outlen < (int)sizeof(outbuf))
+    outbuf[outlen] = 0;
+  iunlockput(ip);
+  end_op();
+  if(maxlen > outlen + 1)
+    maxlen = outlen + 1;
+  if(copyout(p->pagetable, userbuf, outbuf, maxlen) < 0)
+    return -1;
+  return 0;
 }
