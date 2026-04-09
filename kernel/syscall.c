@@ -104,6 +104,7 @@ extern uint64 sys_close(void);
 extern uint64 sys_addtag(void);
 extern uint64 sys_removetag(void);
 extern uint64 sys_listtags(void);
+extern uint64 sys_dumpblocks(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -132,6 +133,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_addtag]  sys_addtag,
 [SYS_removetag] sys_removetag,
 [SYS_listtags] sys_listtags,
+[SYS_dumpblocks] sys_dumpblocks,
 };
 
 void

@@ -23,3 +23,4 @@
 #define SYS_addtag 22
 #define SYS_removetag 23
 #define SYS_listtags 24
+#define SYS_dumpblocks 25

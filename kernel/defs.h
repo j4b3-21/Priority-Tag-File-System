@@ -54,6 +54,7 @@ void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, int, uint64, uint, uint);
 void            itrunc(struct inode*);
 void            ireclaim(int);
+void            fs_dump_ptfs_blocks(void);
 
 // kalloc.c
 void*           kalloc(void);

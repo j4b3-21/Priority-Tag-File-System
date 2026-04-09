@@ -5,14 +5,10 @@
 #include "sleeplock.h"
 #include "stat.h"
 #include "fs.h"
+#include "buf.h"
 #include "file.h"
 #include "defs.h"
 #include "ptfs.h"
-
-extern struct {
-  struct spinlock lock;
-  struct inode inode[NINODE];
-} itable;
 
 struct tag_priority tag_table[MAX_TAG_TABLE];
 static int tag_table_count;
@@ -146,7 +142,7 @@ void
 calculate_priority(struct inode *ip)
 {
   int i;
-  int sum = 0;
+  int sum = PTFS_BASE_PRIORITY;
 
   if(ip == 0)
     return;
@@ -157,26 +153,160 @@ calculate_priority(struct inode *ip)
   for(i = 0; i < ip->totalTags; i++)
     sum += get_tag_priority(ip->tag[i]);
 
-  ip->priority = sum + ip->accessCount;
+  sum += ip->accessCount;
+  if(sum < 0)
+    sum = 0;
+
+  ip->priority = sum;
+}
+
+static int
+is_single_block_file(struct inode *ip)
+{
+  if(ip == 0 || ip->type != T_FILE)
+    return 0;
+  if(ip->size > BSIZE)
+    return 0;
+  if(ip->addrs[0] == 0)
+    return 0;
+  for(int k = 1; k < NDIRECT; k++){
+    if(ip->addrs[k] != 0)
+      return 0;
+  }
+  if(ip->addrs[NDIRECT] != 0)
+    return 0;
+  return 1;
+}
+
+static void
+swap_single_block_files(struct inode *a, struct inode *b)
+{
+  struct inode *first = a;
+  struct inode *second = b;
+  struct buf *ba;
+  struct buf *bb;
+  char tmp[BSIZE];
+  uint block_a;
+  uint block_b;
+
+  if(a == 0 || b == 0 || a == b)
+    return;
+
+  if(a->inum > b->inum){
+    first = b;
+    second = a;
+  }
+
+  begin_op();
+  ilock(first);
+  ilock(second);
+
+  if(!is_single_block_file(first) || !is_single_block_file(second)){
+    iunlock(second);
+    iunlock(first);
+    end_op();
+    return;
+  }
+
+  block_a = a->addrs[0];
+  block_b = b->addrs[0];
+
+  ba = bread(a->dev, block_a);
+  bb = bread(b->dev, block_b);
+  memmove(tmp, ba->data, BSIZE);
+  memmove(ba->data, bb->data, BSIZE);
+  memmove(bb->data, tmp, BSIZE);
+  log_write(ba);
+  log_write(bb);
+  brelse(bb);
+  brelse(ba);
+
+  a->addrs[0] = block_b;
+  b->addrs[0] = block_a;
+  iupdate(a);
+  iupdate(b);
+
+  iunlock(second);
+  iunlock(first);
+  end_op();
+}
+
+static void
+collect_file_inodes(struct inode *dp, struct inode **out, int *n, int max)
+{
+  struct dirent de;
+
+  if(dp == 0 || dp->type != T_DIR)
+    return;
+
+  for(uint off = 0; off < dp->size; off += sizeof(de)){
+    char name[DIRSIZ + 1];
+    struct inode *child;
+
+    if(*n >= max)
+      return;
+
+    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("collect_file_inodes");
+    if(de.inum == 0)
+      continue;
+
+    memset(name, 0, sizeof(name));
+    memmove(name, de.name, DIRSIZ);
+    if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
+      continue;
+
+    child = dirlookup(dp, name, 0);
+    if(child == 0)
+      continue;
+
+    ilock(child);
+    if(child->type == T_DIR){
+      collect_file_inodes(child, out, n, max);
+      iunlock(child);
+      iput(child);
+    } else if(child->type == T_FILE) {
+      out[*n] = child;
+      (*n)++;
+      iunlock(child);
+    } else {
+      iunlock(child);
+      iput(child);
+    }
+  }
 }
 
 void
 reorder_files(void)
 {
   struct inode *sorted[NINODE];
+  struct inode *root;
   uint priorities[NINODE];
+  struct inode *movable[NINODE];
+  uint target_blocks[NINODE];
   int n = 0;
+  int m = 0;
 
-  acquire(&itable.lock);
-  for(int i = 0; i < NINODE; i++){
-    struct inode *ip = &itable.inode[i];
-    if(ip->ref > 0 && ip->valid && ip->type == T_FILE){
-      sorted[n] = ip;
-      priorities[n] = ip->priority;
-      n++;
-    }
+  begin_op();
+  root = namei("/");
+  if(root == 0){
+    end_op();
+    return;
   }
-  release(&itable.lock);
+  ilock(root);
+  if(root->type == T_DIR)
+    collect_file_inodes(root, sorted, &n, NINODE);
+  iunlockput(root);
+  end_op();
+
+  if(n < 2){
+    for(int i = 0; i < n; i++)
+      iput(sorted[i]);
+    return;
+  }
+
+  for(int i = 0; i < n; i++)
+    priorities[i] = sorted[i]->priority;
 
   for(int i = 0; i < n; i++){
     for(int j = i + 1; j < n; j++){
@@ -191,9 +321,44 @@ reorder_files(void)
     }
   }
 
-  // xv6 keeps file block placement stable; we maintain a sorted priority view
-  // and recompute metadata, but avoid block remapping in this consistency path.
-  (void)sorted;
+  for(int i = 0; i < n; i++){
+    if(is_single_block_file(sorted[i]))
+      movable[m++] = sorted[i];
+  }
+
+  if(m < 2){
+    for(int i = 0; i < n; i++)
+      iput(sorted[i]);
+    return;
+  }
+
+  // Capture the available first-block slots in ascending order.
+  for(int i = 0; i < m; i++)
+    target_blocks[i] = movable[i]->addrs[0];
+  for(int i = 0; i < m; i++){
+    for(int j = i + 1; j < m; j++){
+      if(target_blocks[j] < target_blocks[i]){
+        uint t = target_blocks[i];
+        target_blocks[i] = target_blocks[j];
+        target_blocks[j] = t;
+      }
+    }
+  }
+
+  // Highest-priority file should occupy the lowest-numbered block.
+  for(int i = 0; i < m; i++){
+    if(movable[i]->addrs[0] == target_blocks[i])
+      continue;
+    for(int j = i + 1; j < m; j++){
+      if(movable[j]->addrs[0] == target_blocks[i]){
+        swap_single_block_files(movable[i], movable[j]);
+        break;
+      }
+    }
+  }
+
+  for(int i = 0; i < n; i++)
+    iput(sorted[i]);
 }
 
 void

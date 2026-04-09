@@ -149,7 +149,8 @@ UPROGS=\
 	$U/_dorphan\
 	$U/_addtag\
 	$U/_removetag\
-	$U/_listtags
+	$U/_listtags\
+	$U/_dumpblocks
 
 fs.img: mkfs/mkfs README .config_tag $(UPROGS)
 	mkfs/mkfs fs.img README .config_tag $(UPROGS)

@@ -193,6 +193,149 @@ iinit()
 
 static struct inode* iget(uint dev, uint inum);
 
+static void
+ptfs_format_tags(struct inode *ip, char *out, int outlen)
+{
+  int outpos = 0;
+
+  if(outlen <= 0)
+    return;
+
+  out[0] = 0;
+  for(int i = 0; i < ip->totalTags && i < MAX_TAG; i++){
+    int taglen = 0;
+    while(taglen < TAG_LENGTH && ip->tag[i][taglen] != 0)
+      taglen++;
+
+    if(taglen == 0)
+      continue;
+
+    if(outpos > 0 && outpos + 1 < outlen)
+      out[outpos++] = ',';
+
+    if(outpos + taglen >= outlen)
+      taglen = outlen - outpos - 1;
+    if(taglen <= 0)
+      break;
+
+    memmove(out + outpos, ip->tag[i], taglen);
+    outpos += taglen;
+  }
+
+  out[outpos] = 0;
+}
+
+static void
+ptfs_dump_file_blocks(struct inode *ip, const char *path)
+{
+  char tags[MAX_TAG * TAG_LENGTH + MAX_TAG];
+
+  ptfs_format_tags(ip, tags, sizeof(tags));
+
+  for(int i = 0; i < NDIRECT; i++){
+    if(ip->addrs[i] == 0)
+      continue;
+    printf("ptfs: block=%d file_block=%d file=%s priority=%d tags=[%s]\n",
+           ip->addrs[i], i, path, ip->priority, tags);
+  }
+
+  if(ip->addrs[NDIRECT]){
+    struct buf *bp = bread(ip->dev, ip->addrs[NDIRECT]);
+    uint *a = (uint*)bp->data;
+    for(int i = 0; i < NINDIRECT; i++){
+      if(a[i] == 0)
+        continue;
+      printf("ptfs: block=%d file_block=%d file=%s priority=%d tags=[%s]\n",
+             a[i], NDIRECT + i, path, ip->priority, tags);
+    }
+    brelse(bp);
+  }
+}
+
+static void
+ptfs_dump_tree(struct inode *dp, char *path)
+{
+  struct dirent de;
+
+  if(dp->type != T_DIR)
+    return;
+
+  for(uint off = 0; off < dp->size; off += sizeof(de)){
+    char name[DIRSIZ + 1];
+    char childpath[MAXPATH];
+    int prefix_len;
+    int name_len;
+    struct inode *child;
+
+    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("ptfs_dump_tree read");
+    if(de.inum == 0)
+      continue;
+
+    memset(name, 0, sizeof(name));
+    memmove(name, de.name, DIRSIZ);
+    if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
+      continue;
+
+    child = iget(dp->dev, de.inum);
+    ilock(child);
+
+    prefix_len = strlen(path);
+    name_len = strlen(name);
+    memset(childpath, 0, sizeof(childpath));
+    if(prefix_len == 1 && path[0] == '/'){
+      childpath[0] = '/';
+      if(name_len > MAXPATH - 2)
+        name_len = MAXPATH - 2;
+      memmove(childpath + 1, name, name_len);
+      childpath[1 + name_len] = 0;
+    } else {
+      if(prefix_len > MAXPATH - 1)
+        prefix_len = MAXPATH - 1;
+      memmove(childpath, path, prefix_len);
+      if(prefix_len < MAXPATH - 1)
+        childpath[prefix_len++] = '/';
+      if(name_len > MAXPATH - prefix_len - 1)
+        name_len = MAXPATH - prefix_len - 1;
+      if(name_len > 0)
+        memmove(childpath + prefix_len, name, name_len);
+      childpath[prefix_len + name_len] = 0;
+    }
+
+    if(child->type == T_DIR)
+      ptfs_dump_tree(child, childpath);
+    else if(child->type == T_FILE)
+      ptfs_dump_file_blocks(child, childpath);
+
+    iunlock(child);
+    iput(child);
+  }
+}
+
+void
+fs_dump_ptfs_blocks(void)
+{
+  struct inode *root;
+  char rootpath[2] = "/";
+
+  begin_op();
+  root = iget(ROOTDEV, ROOTINO);
+  if(root == 0){
+    end_op();
+    return;
+  }
+
+  ilock(root);
+  if(root->type == T_DIR){
+    printf("ptfs: used file blocks (empty blocks skipped)\n");
+    ptfs_dump_tree(root, rootpath);
+    printf("ptfs: end block dump\n");
+  }
+  iunlock(root);
+  iput(root);
+  end_op();
+}
+
 // Allocate an inode on device dev.
 // Mark it as allocated by  giving it type type.
 // Returns an unlocked but allocated and referenced inode,

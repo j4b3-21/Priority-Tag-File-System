@@ -290,7 +290,7 @@ create(char *path, short type, short major, short minor)
   ip->minor = minor;
   ip->nlink = 1;
   ip->totalTags = 0;
-  ip->priority = 0;
+  ip->priority = PTFS_BASE_PRIORITY;
   ip->accessCount = 0;
   memset(ip->tag, 0, sizeof(ip->tag));
   calculate_priority(ip);
@@ -641,3 +641,11 @@ sys_listtags(void)
     return -1;
   return 0;
 }
+
+uint64
+sys_dumpblocks(void)
+{
+  fs_dump_ptfs_blocks();
+  return 0;
+}
+

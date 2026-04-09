@@ -27,6 +27,7 @@ int uptime(void);
 int addtag(const char*, const char*);
 int removetag(const char*, const char*);
 int listtags(const char*, char*, int);
+int dumpblocks(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

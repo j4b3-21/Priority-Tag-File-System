@@ -6,6 +6,7 @@
 struct inode;
 
 #define MAX_TAG_TABLE 50
+#define PTFS_BASE_PRIORITY 50
 
 struct tag_priority {
   char tag[TAG_LENGTH];
