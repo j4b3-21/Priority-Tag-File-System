@@ -17,5 +17,7 @@ if(listtags(argv[1], buf, sizeof(buf)) < 0){
     fprintf(2, "listtags: failed for %s\n", argv[1]);
     exit(1);
   }
-  
+  printf("%s\n", buf);
+  exit(0);
+}
 // Buffer-based approach for storing tag output
