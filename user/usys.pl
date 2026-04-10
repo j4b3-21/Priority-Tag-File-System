@@ -43,7 +43,6 @@ entry("sbrk");
 entry("pause");
 entry("uptime");
 # Tag-related syscalls
-
 entry("addtag");
 entry("removetag");
 entry("listtags");

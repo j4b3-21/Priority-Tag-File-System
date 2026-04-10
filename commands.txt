@@ -1,0 +1,8 @@
+echo "a" > a.txt
+addtag a.txt project
+echo "b" > b.txt
+addtag b.txt os
+dumpblocks
+echo "c" > c.txt 
+addtag c.txt important
+dumpblocks
