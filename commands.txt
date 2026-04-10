@@ -3,6 +3,8 @@ addtag a.txt project
 echo "b" > b.txt
 addtag b.txt os
 dumpblocks
+clear
 echo "c" > c.txt 
 addtag c.txt important
 dumpblocks
+clear
