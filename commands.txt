@@ -1,10 +1,11 @@
-echo "a" > a.txt
-addtag a.txt project
-echo "b" > b.txt
-addtag b.txt os
+echo "file1" > file1 
+addtag file1 project
+dumpblocks
+echo "file2" > file2
+addtag file2 os
 dumpblocks
 clear
-echo "c" > c.txt 
-addtag c.txt important
+echo "file3" > file3
+addtag file3 important
 dumpblocks
 clear
